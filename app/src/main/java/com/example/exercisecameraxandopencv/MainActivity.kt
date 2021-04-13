@@ -4,12 +4,22 @@ import android.Manifest
 import android.content.pm.PackageManager
 import androidx.appcompat.app.AppCompatActivity
 import android.os.Bundle
+import android.util.Log
+import android.widget.Toast
+import androidx.camera.core.CameraSelector
+import androidx.camera.core.ImageAnalysis
+import androidx.camera.core.ImageProxy
+import androidx.camera.core.Preview
+import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
+import kotlinx.android.synthetic.main.activity_main.*
 import java.util.concurrent.Executor
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
 import java.util.concurrent.Executors.newSingleThreadExecutor
+import org.opencv.android.OpenCVLoader
+import org.opencv.core.Mat
 
 class MainActivity : AppCompatActivity() {
 
@@ -49,7 +59,41 @@ class MainActivity : AppCompatActivity() {
         cameraExecutor = Executors.newSingleThreadExecutor()
     }
 
-    private fun startCamera() {}
+    // カメラの起動
+    private fun startCamera() {
+        // ProcessCameraProviderのインスタンス生成
+        val cameraProviderFuture = ProcessCameraProvider.getInstance(this)
+
+        // リスナーの設定
+        // 第1引数：Runnable（タスク）
+        // 第2引数：ContextCompat.getMainExecutor()
+        //         メインスレッドで動いているExecutorを返す．
+        cameraProviderFuture.addListener(Runnable {
+            // カメラのライフサイクルをlifecycleOwnerにバインドするために使う．
+            val cameraProvider: ProcessCameraProvider = cameraProviderFuture.get()
+
+            // previewの作成
+            val preview = Preview.Builder()
+                    .build()
+                    .also {
+                        it.setSurfaceProvider(preview_view_main.createSurfaceProvider())
+                    }
+
+            // cameraSelector: 背面カメラをデフォルトで利用する．
+            val cameraSelector = CameraSelector.DEFAULT_BACK_CAMERA
+
+            try {
+                // cameraProviderのバインドを切る
+                cameraProvider.unbindAll()
+                // ライフサイクルとバインドする．
+                cameraProvider.bindToLifecycle(
+                        this, cameraSelector, preview)
+            } catch(exc: Exception) {
+                Log.e(TAG, "Use case binding failed", exc)
+            }
+
+        }, ContextCompat.getMainExecutor(this))
+    }
 
     // ユーザーがすでに特定の権限をアプリに付与しているかをチェックする．
     // そのためにその権限をContextCompat.checkSelfPermission()メソッドに渡す．
@@ -60,12 +104,46 @@ class MainActivity : AppCompatActivity() {
 
     }
 
+    // リクエストを受け取る
+    override fun onRequestPermissionsResult(
+            requestCode: Int,
+            permissions: Array<String>,
+            grantResults: IntArray) {
+        // リクエストコードが正しいかチェックして，正しかったらカメラを起動する．
+        // そうでないならテキストを表示する．
+        if(requestCode == REQUEST_CODE_PERMISSIONS) {
+            if(allPermissionsGranted()) {
+                startCamera()
+            } else {
+                Toast.makeText(this,
+                    "Permissions not granted by the user.",
+                    Toast.LENGTH_SHORT).show()
+                finish()
+            }
+        }
+    }
+
     // activity終了時にcameraExecutorも終了する
     override fun onDestroy() {
         super.onDestroy()
         cameraExecutor.shutdown()
     }
 
+
+    private class MyImageAnalyzer() : ImageAnalysis.Analyzer {
+        override fun analyze(image: ImageProxy) {
+            TODO("Not yet implemented")
+        }
+
+        private fun getMatFromImage(image: ImageProxy): Mat {
+            TODO()
+        }
+
+        private fun fixMatRotation(matOrg: Mat): Mat {
+            TODO()
+        }
+
+    }
     companion object {
         private const val TAG = "MainActivity"
         private const val REQUEST_CODE_PERMISSIONS = 10
