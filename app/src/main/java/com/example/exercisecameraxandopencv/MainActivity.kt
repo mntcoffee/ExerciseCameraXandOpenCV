@@ -2,24 +2,29 @@ package com.example.exercisecameraxandopencv
 
 import android.Manifest
 import android.content.pm.PackageManager
-import androidx.appcompat.app.AppCompatActivity
+import android.graphics.Bitmap
 import android.os.Bundle
 import android.util.Log
+import android.view.Surface
 import android.widget.Toast
+import androidx.appcompat.app.AppCompatActivity
 import androidx.camera.core.CameraSelector
 import androidx.camera.core.ImageAnalysis
 import androidx.camera.core.ImageProxy
 import androidx.camera.core.Preview
 import androidx.camera.lifecycle.ProcessCameraProvider
+import androidx.camera.view.PreviewView
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import kotlinx.android.synthetic.main.activity_main.*
-import java.util.concurrent.Executor
+import org.opencv.android.OpenCVLoader
+import org.opencv.android.Utils
+import org.opencv.core.*
+import org.opencv.imgproc.Imgproc
+import java.nio.ByteBuffer
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
-import java.util.concurrent.Executors.newSingleThreadExecutor
-import org.opencv.android.OpenCVLoader
-import org.opencv.core.Mat
+
 
 class MainActivity : AppCompatActivity() {
 
@@ -34,9 +39,13 @@ class MainActivity : AppCompatActivity() {
      */
     private lateinit var cameraExecutor: ExecutorService
 
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
+
+        // ライブラリの読み込み
+        //OpenCVLoader.initDebug()
 
         // カメラのパーミッションがあるならカメラを起動する．
         // ないならリクエストを送る
@@ -59,6 +68,7 @@ class MainActivity : AppCompatActivity() {
         cameraExecutor = Executors.newSingleThreadExecutor()
     }
 
+
     // カメラの起動
     private fun startCamera() {
         // ProcessCameraProviderのインスタンス生成
@@ -78,6 +88,12 @@ class MainActivity : AppCompatActivity() {
                     .also {
                         it.setSurfaceProvider(preview_view_main.createSurfaceProvider())
                     }
+
+//            val imageAnalyzer = ImageAnalysis.Builder()
+//                    .build()
+//                    .also {
+//                        it.setAnalyzer(cameraExecutor, MyImageAnalyzer())
+//                    }
 
             // cameraSelector: 背面カメラをデフォルトで利用する．
             val cameraSelector = CameraSelector.DEFAULT_BACK_CAMERA
@@ -129,24 +145,10 @@ class MainActivity : AppCompatActivity() {
         cameraExecutor.shutdown()
     }
 
-
-    private class MyImageAnalyzer() : ImageAnalysis.Analyzer {
-        override fun analyze(image: ImageProxy) {
-            TODO("Not yet implemented")
-        }
-
-        private fun getMatFromImage(image: ImageProxy): Mat {
-            TODO()
-        }
-
-        private fun fixMatRotation(matOrg: Mat): Mat {
-            TODO()
-        }
-
-    }
     companion object {
         private const val TAG = "MainActivity"
         private const val REQUEST_CODE_PERMISSIONS = 10
         private val REQUIRED_PERMISSIONS = arrayOf(Manifest.permission.CAMERA)
+
     }
 }
