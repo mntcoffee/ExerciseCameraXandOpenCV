@@ -13,13 +13,14 @@ import androidx.camera.core.ImageAnalysis
 import androidx.camera.core.ImageProxy
 import androidx.camera.core.Preview
 import androidx.camera.lifecycle.ProcessCameraProvider
-import androidx.camera.view.PreviewView
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import kotlinx.android.synthetic.main.activity_main.*
 import org.opencv.android.OpenCVLoader
 import org.opencv.android.Utils
-import org.opencv.core.*
+import org.opencv.core.Core
+import org.opencv.core.CvType
+import org.opencv.core.Mat
 import org.opencv.imgproc.Imgproc
 import java.nio.ByteBuffer
 import java.util.concurrent.ExecutorService
@@ -45,7 +46,7 @@ class MainActivity : AppCompatActivity() {
         setContentView(R.layout.activity_main)
 
         // ライブラリの読み込み
-        //OpenCVLoader.initDebug()
+        OpenCVLoader.initDebug()
 
         // カメラのパーミッションがあるならカメラを起動する．
         // ないならリクエストを送る
@@ -89,11 +90,11 @@ class MainActivity : AppCompatActivity() {
                         it.setSurfaceProvider(preview_view_main.createSurfaceProvider())
                     }
 
-//            val imageAnalyzer = ImageAnalysis.Builder()
-//                    .build()
-//                    .also {
-//                        it.setAnalyzer(cameraExecutor, MyImageAnalyzer())
-//                    }
+            val imageAnalyzer = ImageAnalysis.Builder()
+                    .build()
+                    .also {
+                        it.setAnalyzer(cameraExecutor, MyImageAnalyzer())
+                    }
 
             // cameraSelector: 背面カメラをデフォルトで利用する．
             val cameraSelector = CameraSelector.DEFAULT_BACK_CAMERA
@@ -103,7 +104,7 @@ class MainActivity : AppCompatActivity() {
                 cameraProvider.unbindAll()
                 // ライフサイクルとバインドする．
                 cameraProvider.bindToLifecycle(
-                        this, cameraSelector, preview)
+                        this, cameraSelector, preview, imageAnalyzer)
             } catch(exc: Exception) {
                 Log.e(TAG, "Use case binding failed", exc)
             }
@@ -137,6 +138,81 @@ class MainActivity : AppCompatActivity() {
                 finish()
             }
         }
+    }
+
+    // inner classにしないと外部変数にアクセスできない
+    inner class MyImageAnalyzer() : ImageAnalysis.Analyzer {
+        // 前のmatデータ
+        private var matPrevious: Mat? = null
+
+        override fun analyze(image: ImageProxy) {
+            // create cv::mat(RGB888) from image(NV21)
+            val matOrg = getMatFromImage(image)
+
+            // 回転処理
+            val mat = fixMatRotation(matOrg)
+
+            Log.i(TAG, "[analyze] width = ${image.width}, height = ${image.height}, Rotation = ${preview_view_main.display.rotation}")
+            Log.i(TAG, "[analyze] mat width = ${matOrg.cols()}, mat height = ${matOrg.rows()}")
+
+            // 画像処理：差分検出
+            // 出力データ
+            val matOutput = Mat(mat.rows(), mat.cols(), mat.type())
+            // 前のデータ（差分対象）のチェック
+            if(matPrevious == null) matPrevious = mat
+            Core.absdiff(mat, matPrevious, matOutput)
+            matPrevious = mat
+
+            // convert cv::mat to bitmap for drawing
+            val bitmap = Bitmap.createBitmap(matOutput.cols(), matOutput.rows(), Bitmap.Config.ARGB_8888)
+            Utils.matToBitmap(matOutput, bitmap)
+
+            runOnUiThread { image_view_main.setImageBitmap(bitmap) }
+
+            // 終了（終了しないと次回呼ばれない）
+            image.close()
+        }
+
+        private fun getMatFromImage(image: ImageProxy): Mat {
+            val yBuffer: ByteBuffer = image.planes[0].buffer
+            val uBuffer: ByteBuffer = image.planes[1].buffer
+            val vBuffer: ByteBuffer = image.planes[2].buffer
+            val ySize: Int = yBuffer.remaining()
+            val uSize: Int = uBuffer.remaining()
+            val vSize: Int = vBuffer.remaining()
+            val nv21 = ByteArray(ySize + uSize + vSize)
+            yBuffer.get(nv21, 0, ySize)
+            vBuffer.get(nv21, ySize, vSize)
+            uBuffer.get(nv21, ySize + vSize, uSize)
+            val yuv = Mat(image.height + image.height / 2, image.width, CvType.CV_8UC1)
+            yuv.put(0, 0, nv21)
+            val mat = Mat()
+            Imgproc.cvtColor(yuv, mat, Imgproc.COLOR_YUV2RGB_NV21, 3)
+            return mat
+        }
+
+        private fun fixMatRotation(matOrg: Mat): Mat {
+            val mat: Mat
+            when (preview_view_main.display.rotation) {
+                Surface.ROTATION_0 -> {
+                    mat = Mat(matOrg.cols(), matOrg.rows(), matOrg.type())
+                    Core.transpose(matOrg, mat)
+                    Core.flip(mat, mat, 1)
+                }
+                Surface.ROTATION_90 -> mat = matOrg
+                Surface.ROTATION_270 -> {
+                    mat = matOrg
+                    Core.flip(mat, mat, -1)
+                }
+                else -> {
+                    mat = Mat(matOrg.cols(), matOrg.rows(), matOrg.type())
+                    Core.transpose(matOrg, mat)
+                    Core.flip(mat, mat, 1)
+                }
+            }
+            return mat
+        }
+
     }
 
     // activity終了時にcameraExecutorも終了する
